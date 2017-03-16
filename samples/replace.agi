@@ -3,7 +3,7 @@
 #
 # AGI script that replaces words by digits
 #
-# Copyright (C) 2012, Lefteris Zafiris <zaf.000@gmail.com>
+# Copyright (C) 2012 - 2014, Lefteris Zafiris <zaf@fastmail.com>
 #
 # This program is free software, distributed under the terms of
 # the GNU General Public License Version 2. See the COPYING file
@@ -19,12 +19,12 @@ my $debug = 0;
 
 
 # Store AGI input #
+($AGI{arg_1}) = @ARGV;
 while (<STDIN>) {
 	chomp;
 	last if (!length);
 	$AGI{$1} = $2 if (/^agi_(\w+)\:\s+(.*)$/);
 }
-($AGI{arg_1}) = @ARGV;
 
 my $name = " -- $AGI{request}:";
 

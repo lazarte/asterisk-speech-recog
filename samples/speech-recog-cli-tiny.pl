@@ -24,14 +24,13 @@ use URI::Escape;
 use File::Temp qw(tempfile);
 use Getopt::Std;
 use File::Basename;
-use LWP::UserAgent;
+use HTTP::Tiny;
 use LWP::ConnCache;
-use JSON;
-
+use JSON::Tiny qw(decode_json);
 my %options;
 my $filetype;
 my $audio;
-my $ua;
+my $http;
 my $key;
 my $url        = "https://www.google.com/speech-api/v2/recognize";
 my $samplerate = 8000;
@@ -47,12 +46,11 @@ VERSION_MESSAGE() if (defined $options{h} || !@ARGV);
 
 parse_options();
 
-
-$ua = LWP::UserAgent->new(ssl_opts => {verify_hostname => 1});
-$ua->agent("CLI speeech recognition script");
-$ua->env_proxy;
-$ua->conn_cache(LWP::ConnCache->new());
-$ua->timeout(20);
+$http = HTTP::Tiny->new(
+	agent      => 'Asterisk AGI speeech recognition script',
+	timeout    => 10,
+	verify_SSL => 1,
+);
 
 # send each sound file to google and get the recognition results #
 foreach my $file (@ARGV) {
@@ -86,18 +84,16 @@ foreach my $file (@ARGV) {
 	$language   = uri_escape($language);
 	$pro_filter = uri_escape($pro_filter);
 	$results    = uri_escape($results);
-	my $response = $ua->post(
-		"$url?lang=$language&pfilter=$pro_filter&maxresults=$results&key=$key",
-		Content_Type => "audio/$filetype; rate=$samplerate",
-		Content      => "$audio",
-	);
-	if (!$response->is_success) {
+	my %headers =('Content-Type' => "audio/$filetype; rate=$samplerate");
+	my %options = ('headers' => \%headers, 'content' => $audio);
+	my $response = $http->request('POST', "$url?lang=$language&pfilter=$pro_filter&maxresults=$results&key=$key", \%options);
+	if (!$response->{'success'}) {
 		say_msg("Failed to get data for file: $file");
 		++$error;
 		next;
 	}
 	my %response;
-	foreach (split(/\n/,$response->content)) {
+	foreach (split(/\n/,$response->{'content'})) {
 		my $jdata = decode_json($_);
 		for (0 .. $results-1) {
 			push(@{$response{transcript}}, $jdata->{result}[0]->{alternative}[$_]->{transcript}) if $jdata->{result}[0]->{alternative}[$_]->{transcript};
@@ -120,7 +116,7 @@ foreach my $file (@ARGV) {
 	} elsif ($output eq "compact") {
  		print "$_\n" foreach (@{$response{transcript}});
 	} elsif ($output eq "raw") {
-		print $response->content;
+		print $response->{'content'};
 	}
 }
 
@@ -183,7 +179,7 @@ sub encode_flac {
 		SUFFIX => '.flac',
 		UNLINK => 1,
 	);
-	if (system($flac, "-8", "-f", "--totally-silent", "-o", "$tmpname", "$file")) {
+	if (system($flac, "-1", "-f", "--totally-silent", "-o", "$tmpname", "$file")) {
 		say_msg("$flac failed to encode file");
 		return -1;
 	}
